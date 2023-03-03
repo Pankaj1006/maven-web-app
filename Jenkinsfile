@@ -1,54 +1,28 @@
 node{
-    
-    stage('Clone repo'){
-        git credentialsId: 'GIT-Credentials', url: 'https://github.com/Pankaj1006/maven-web-app.git'
+    stage('Clone Repo'){
+        git credentialsId: 'Pankaj1006', url: 'https://github.com/Pankaj1006/maven-web-app.git'
     }
-    
     stage('Maven Build'){
-        def mavenHome = tool name: "Maven-3.8.6", type: "maven"
+        def mavenHome = tool name: "maven", type: "maven"
         def mavenCMD = "${mavenHome}/bin/mvn"
         sh "${mavenCMD} clean package"
     }
-    
-    stage('SonarQube analysis') {       
-        withSonarQubeEnv('Sonar-Server-7.8') {
-       	sh "mvn sonar:sonar"    	
-    }
-        
-    stage('upload war to nexus'){
-	steps{
-		nexusArtifactUploader artifacts: [	
-			[
-				artifactId: '01-maven-web-app',
-				classifier: '',
-				file: 'target/01-maven-web-app.war',
-				type: war		
-			]	
-		],
-		credentialsId: 'nexus3',
-		groupId: 'in.project',
-		nexusUrl: '',
-		protocol: 'http',
-		repository: 'project-release'
-		version: '1.0.0'
-	}
-}
-    
-    stage('Build Image'){
-        sh 'docker build -t project/mavenwebapp .'
-    }
-    
-    stage('Push Image'){
-        withCredentials([string(credentialsId: 'DOCKER-CREDENTIALS', variable: 'DOCKER_CREDENTIALS')]) {
-            sh 'docker login -u project -p ${DOCKER_CREDENTIALS}'
+    stage('Code Review'){
+        withSonarQubeEnv(credentialsId: 'sonar-token') {
+        def mavenHome = tool name: "maven", type: "maven"
+        def mavenCMD = "${mavenHome}/bin/mvn"
+        sh "mvn sonar:sonar"
         }
-        sh 'docker push project/mavenwebapp'
     }
-    
-    stage('Deploy App'){
-        kubernetesDeploy(
-            configs: 'maven-web-app-deploy.yml',
-            kubeconfigId: 'Kube-Config'
-        )
-    }    
+    stage('Upload Artifact on Nexus'){
+        // nexusArtifactUploader artifacts: [[artifactId: '01-maven-web-app', classifier: '', file: 'target/01-maven-web-app.war', type: 'war']], credentialsId: 'nexus-credentials', groupId: 'in.project', nexusUrl: '52.66.204.71:8081', nexusVersion: 'nexus3', protocol: 'http', repository: 'project-snapshot', version: '1.0-SNAPSHOT'
+        // nexusArtifactUploader credentialsId: 'nexus-credentials', groupId: 'in.project', nexusUrl: '52.66.204.71:8081', nexusVersion: 'nexus3', protocol: 'http', repository: 'project-snapshot', version: '2.0-SNAPSHOT'
+        nexusArtifactUploader artifacts: [[artifactId: '01-maven-web-app', classifier: '', file: 'target/01-maven-web-app.war', type: 'war']], credentialsId: 'nexus-credentials', groupId: 'in.project', nexusUrl: '52.66.204.71:8081', nexusVersion: 'nexus3', protocol: 'http', repository: 'project-snapshot', version: '2.0-SNAPSHOT'
+    }
+    stage('Deploy'){
+        sshagent(['Tomcat-Server-Agent']) {
+            sh 'scp -o StrictHostKeyChecking=no target/01-maven-web-app.war ec2-user@65.0.32.119:/home/ec2-user/apache-tomcat-9.0.72/webapps'
+        
+      }
+    }
 }
